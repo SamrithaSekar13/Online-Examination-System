@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Online Exam System</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: auto; }
+    h1, h2 { text-align: center; }
+    .question { margin-bottom: 20px; }
+    label { display: block; margin: 5px 0; }
+    #timer { font-weight: bold; margin-bottom: 15px; }
+    button { padding: 10px 15px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Online Examination System</h1>
+
+  <div id="auth">
+    <h2>Register / Login</h2>
+    <input type="text" id="username" placeholder="Username" /><br/><br/>
+    <input type="password" id="password" placeholder="Password" /><br/><br/>
+    <button onclick="register()">Register</button>
+    <button onclick="login()">Login</button>
+  </div>
+
+  <div id="exam" style="display:none;">
+    <h2>Welcome, <span id="user-name"></span></h2>
+    <button onclick="loadQuestions()">Start Exam</button>
+
+    <div id="timer"></div>
+    <div id="questions-container"></div>
+    <button id="submit-btn" onclick="submitExam()" style="display:none;">Submit Exam</button>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    let user = null;
+    let questions = [];
+    let timerInterval;
+
+    function register() {
+      fetch('http://localhost:3001/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value
+        })
+      })
+      .then(res => res.text())
+      .then(alert)
+      .catch(console.error);
+    }
+
+    function login() {
+      fetch('http://localhost:3001/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value
+        })
+      })
+      .then(res => {
+        if (res.ok) return res.json();
+        else throw new Error('Login failed');
+      })
+      .then(data => {
+        user = data;
+        document.getElementById('auth').style.display = 'none';
+        document.getElementById('exam').style.display = 'block';
+        document.getElementById('user-name').innerText = user.username;
+      })
+      .catch(alert);
+    }
+
+    function loadQuestions() {
+      fetch('http://localhost:3001/questions')
+        .then(res => res.json())
+        .then(data => {
+          questions = data;
+          renderQuestions();
+          startTimer(5 * 60); // 5 minutes timer
+        });
+    }
+
+    function renderQuestions() {
+      const container = document.getElementById('questions-container');
+      container.innerHTML = '';
+      questions.forEach((q, i) => {
+        const div = document.createElement('div');
+        div.className = 'question';
+        div.innerHTML = `
+          <p><b>Q${i + 1}: ${q.question_text}</b></p>
+          <label><input type="radio" name="q${q.id}" value="a" /> ${q.option_a}</label>
+          <label><input type="radio" name="q${q.id}" value="b" /> ${q.option_b}</label>
+          <label><input type="radio" name="q${q.id}" value="c" /> ${q.option_c}</label>
+          <label><input type="radio" name="q${q.id}" value="d" /> ${q.option_d}</label>
+        `;
+        container.appendChild(div);
+      });
+      document.getElementById('submit-btn').style.display = 'inline-block';
+    }
+
+    function submitExam() {
+      clearInterval(timerInterval);
+      const answers = questions.map(q => {
+        const radios = document.getElementsByName('q' + q.id);
+        let answer = null;
+        for (const r of radios) {
+          if (r.checked) {
+            answer = r.value;
+            break;
+          }
+        }
+        return { question_id: q.id, answer };
+      });
+
+      fetch('http://localhost:3001/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id, answers })
+      })
+      .then(res => res.json())
+      .then(result => {
+        document.getElementById('result').innerHTML = `<h3>Your Score: ${result.score} / ${result.total}</h3>`;
+        document.getElementById('submit-btn').style.display = 'none';
+        document.getElementById('questions-container').style.display = 'none';
+        document.getElementById('timer').style.display = 'none';
+      });
+    }
+
+    function startTimer(seconds) {
+      let remaining = seconds;
+      const timerDiv = document.getElementById('timer');
+      updateTimer();
+
+      timerInterval = setInterval(() => {
+        remaining--;
+        updateTimer();
+        if (remaining <= 0) {
+          clearInterval(timerInterval);
+          alert('Time is up! Exam will be submitted automatically.');
+          submitExam();
+        }
+      }, 1000);
+
+      function updateTimer() {
+        timerDiv.innerText = `Time Remaining: ${Math.floor(remaining / 60)}:${(remaining % 60).toString().padStart(2, '0')}`;
+      }
+    }
+  </script>
+</body>
+</html>
